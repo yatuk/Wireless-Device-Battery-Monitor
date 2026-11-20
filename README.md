@@ -1,5 +1,10 @@
 # BatteryHub
 
+> **Fork of [krisgfx9/Wireless-Device-Battery-Monitor](https://github.com/krisgfx9/Wireless-Device-Battery-Monitor)
+> with your Claude weekly usage limit on the taskbar.** See [Claude usage limit (this fork)](#claude-usage-limit-this-fork).
+> Download and release links below point to the original project, whose builds do not include the Claude item.
+> Build this fork from source (see [Build](#build)).
+
 *Formerly **Wireless Battery**. Version 1.1.0 renamed the app; an update keeps your settings, startup choice and battery history.*
 
 [![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20me-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/krisgfx)
@@ -24,6 +29,36 @@ Battery levels of your wireless mouse, headset, keyboard and controller, right o
 - **Tiny**: a ~350 KB app using about 2 MB of RAM. It's plain C++/Win32, with no runtime and no background service, and supports per-user installation without administrator rights.
 - **Vendor apps usually aren't required**: most drivers query devices directly. Some headsets use the bundled [HeadsetControl](https://github.com/Sapd/HeadsetControl) helper. Device-specific setup, firmware patches and conflicts with vendor apps are described in the table and [Limitations](#limitations).
 - **Many brands**: Logitech, Razer, SteelSeries, Corsair, HyperX, Glorious, Jabra, JBL, PlayStation and Xbox controllers, Samsung Galaxy Buds, any Bluetooth device Windows knows a battery level for, and every headset the bundled [HeadsetControl](https://github.com/Sapd/HeadsetControl) supports.
+
+## Claude usage limit (this fork)
+
+This fork adds your **Claude weekly usage limit** to the taskbar strip, as the first item: the Claude logo in the
+same white style as the device icons, then the percentage (`✳ 20%  🎧 31%  🖱 100%`).
+
+- **Tooltip:** reset time of the weekly window and the 5-hour limit, e.g. *Claude haftalık limit: %20 · Per 20:00 sıfırlanır · 5 saat: %19*.
+- **Colors:** red from 90%; dimmed when there is no data yet or the data is older than 6 hours.
+- **Where the numbers come from:** BatteryHub reads `%LOCALAPPDATA%\ClaudeLimitWidget\usage.json` every 5 seconds. Either of
+  the two helpers in [`claude/`](claude) writes it:
+  - **[`claude/desktop-sync`](claude/desktop-sync)** (Claude desktop app, claude.ai, any client): a small Electron tray app.
+    You sign in to claude.ai yourself in its window. Your password and cookies stay in the app's own browser profile
+    and are never read by the code. It then reads the numbers shown under *Settings → Usage* once a minute.
+    It uses claude.ai's internal usage endpoint, which is not a documented API, so a claude.ai change can break it.
+    ```
+    cd claude\desktop-sync
+    npm install
+    npx electron .
+    ```
+    Its tray menu has *Refresh now*, *Sign in to claude.ai…* and *Start with Windows*.
+  - **[`claude/claude_limit_statusline.py`](claude/claude_limit_statusline.py)** (Claude Code in a terminal): a
+    [statusLine](https://code.claude.com/docs/en/statusline) command that saves the documented `rate_limits` field
+    (Pro / Max plans). It needs no sign-in or network access. Add it to `~/.claude/settings.json`:
+    ```json
+    "statusLine": { "type": "command", "command": "python \"<path>/claude/claude_limit_statusline.py\"" }
+    ```
+    The Claude desktop app does not run statusLine commands, so use `desktop-sync` there.
+- The fork's menu drops *Request support for a device*, *Support the project* and the update entries. Fork builds
+  never receive the official updates, so the update entries had no use. Please support the original author through
+  the links above.
 
 ## Display
 

@@ -6,6 +6,7 @@
 #include <uiautomation.h>
 #include <algorithm>
 #include <climits>
+#include <cmath>
 
 namespace {
 
@@ -322,6 +323,54 @@ Mask RenderMask(const std::wstring& s, HFONT font, bool darkOnLight) {
     return m;
 }
 
+// The Claude logo, traced from the reference artwork (a 1200 x 1200 canvas) as one outline polygon and
+// rasterised as a coverage mask with 5x5 supersampling, so it sits next to the anti-aliased icon-font
+// glyphs and is tinted white / black like them.
+Mask ClaudeLogoMask(int size) {
+    static const short P[][2] = {
+        {275,63},{312,13},{332,6},{382,13},{403,31},{432,98},{484,212},{550,341},{583,408},{597,453},{602,461},
+        {608,461},{608,451},{614,368},{626,266},{637,135},{641,93},{660,48},{697,24},{726,38},{750,72},{733,185},
+        {706,323},{687,427},{697,427},{708,416},{760,348},{813,282},{849,234},{878,201},{919,159},{946,140},
+        {997,140},{1022,177},{1035,196},{1017,254},{967,317},{921,377},{860,459},{819,530},{824,537},{835,536},
+        {902,522},{976,506},{1043,494},{1143,476},{1182,494},{1188,515},{1172,553},{1097,572},{990,594},{935,606},
+        {839,629},{791,640},{787,643},{791,647},{864,654},{902,656},{980,656},{1046,660},{1129,666},{1163,688},
+        {1188,721},{1185,742},{1128,770},{1028,747},{924,723},{831,701},{790,691},{780,691},{780,697},{836,751},
+        {936,842},{1059,962},{1066,991},{1050,1013},{1033,1011},{954,951},{918,925},{863,876},{800,824},{787,822},
+        {787,830},{807,857},{850,921},{918,1025},{924,1081},{916,1099},{889,1109},{856,1103},{785,1004},{713,898},
+        {657,804},{650,808},{641,903},{627,1059},{617,1168},{602,1186},{566,1200},{536,1177},{520,1141},{535,1064},
+        {552,980},{570,894},{582,812},{591,778},{589,775},{583,776},{525,857},{464,940},{405,1015},{318,1104},
+        {299,1111},{263,1093},{266,1061},{286,1031},{342,958},{412,869},{476,788},{522,733},{522,724},{518,724},
+        {420,788},{302,865},{204,929},{149,936},{124,912},{128,862},{140,849},{232,785},{330,730},{467,653},
+        {472,640},{467,633},{458,634},{416,631},{343,629},{289,628},{158,622},{55,617},{25,610},{0,577},{3,558},
+        {26,543},{59,546},{154,554},{228,559},{330,566},{452,580},{471,580},{474,572},{466,567},{462,563},
+        {347,486},{217,410},{150,362},{117,339},{98,315},{91,266},{123,230},{166,233},{177,236},{245,289},
+        {318,345},{435,433},{459,452},{466,448},{468,444},{459,429},{419,357},{370,269},{320,182},{288,131},
+        {278,94},
+    };
+    const int n = (int)(sizeof(P) / sizeof(P[0]));
+    Mask m;
+    m.w = m.h = std::max(8, size);
+    m.a.assign((size_t)m.w * m.h, 0);
+    const double k = 1200.0 / m.w;  // pixels -> artwork units
+    const int ss = 5;
+    for (int y = 0; y < m.h; y++)
+        for (int x = 0; x < m.w; x++) {
+            int hits = 0;
+            for (int sy = 0; sy < ss; sy++)
+                for (int sx = 0; sx < ss; sx++) {
+                    double px = (x + (sx + 0.5) / ss) * k, py = (y + (sy + 0.5) / ss) * k;
+                    bool in = false;  // even-odd ray cast
+                    for (int i = 0, j = n - 1; i < n; j = i++) {
+                        double xi = P[i][0], yi = P[i][1], xj = P[j][0], yj = P[j][1];
+                        if ((yi > py) != (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) in = !in;
+                    }
+                    if (in) hits++;
+                }
+            m.a[(size_t)y * m.w + x] = (BYTE)(hits * 255 / (ss * ss));
+        }
+    return m;
+}
+
 struct Rgb { int r, g, b; };
 
 struct Canvas {
@@ -421,7 +470,8 @@ std::vector<Piece> Layout(int barW, int barH, int& width, int& height) {
         bool branded = it.accent != Accent::None;
         BrandColor bc = AccentColor(it.accent, g_light);
         Rgb accent{ bc.r, bc.g, bc.b };
-        Piece icon{ RenderMask(std::wstring(1, Glyph(it.kind, it.bluetooth)), icons, g_light), branded ? accent : fg, a, Px(5) };
+        Piece icon{ it.claude ? ClaudeLogoMask(Px(16)) : RenderMask(std::wstring(1, Glyph(it.kind, it.bluetooth)), icons, g_light),
+                    branded ? accent : fg, a, Px(5) };
         if (branded && !it.dim) {
             icon.haloR = Px(3);
             icon.halo = Halo(icon.m, icon.haloR);

@@ -25,6 +25,8 @@
 #include "report.h"
 #include "rename_dialog.h"
 #include "widget.h"
+#include "claude_usage.h"
+#include <cmath>
 #include "update_win.h"
 #include "update_apply.h"
 
@@ -593,6 +595,23 @@ void UpdateWidget() {
     std::vector<std::wstring> labels = ShortLabels(labelIn, 3);
     std::vector<WidgetItem> items;
     std::wstring tip;
+    // Claude weekly usage limit, first (leftmost) in the strip. Red from 90% on, dimmed when unknown or stale.
+    {
+        ClaudeUsage cu;
+        claude_usage::Poll(cu);
+        WidgetItem it;
+        it.claude = true;
+        if (cu.ok) {
+            it.percent = (int)std::lround(cu.week);
+            it.low = it.percent >= 90;
+        } else {
+            it.text = L"–";
+        }
+        it.dim = !cu.ok || cu.stale;
+        items.push_back(it);
+        tip = claude_usage::Tooltip(cu);
+    }
+    labels.insert(labels.begin(), std::wstring());
     for (auto* e : list) {
         WidgetItem it;
         it.kind = e->st.kind;
@@ -934,13 +953,7 @@ void ShowMenu() {
     }
     AppendMenuW(m, MF_STRING, ID_REFRESH, T(L"Refresh now"));
     AppendMenuW(m, MF_STRING | (AutostartEnabled() ? MF_CHECKED : 0), ID_AUTOSTART, T(L"Start with Windows"));
-    AppendMenuW(m, MF_STRING, ID_REPORT, T(L"Request support for a device..."));
-    AppendMenuW(m, MF_STRING, ID_SUPPORT, T(L"Support the project..."));
-    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(m, MF_STRING | (updates::Busy() ? MF_GRAYED : 0), ID_UPDATE, updates::MenuLabel().c_str());
-    UINT updateFlags = MF_STRING | (updates::AutomaticEnabled() ? MF_CHECKED : 0) |
-                       (updates::Supported() ? 0 : MF_GRAYED);
-    AppendMenuW(m, updateFlags, ID_AUTO_UPDATE, T(L"Automatically check for updates"));
+    // Local build: "Request support", "Support the project" and the update entries are removed from the menu.
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, ID_EXIT, T(L"Exit"));
     POINT pt;
@@ -1103,7 +1116,13 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM wp, LPARAM lp) {
             return TRUE;
         case WM_TIMER:
             if (wp == TIMER_DEBOUNCE) { KillTimer(h, TIMER_DEBOUNCE); SetEvent(g_refreshEvt); }
-            if (wp == TIMER_WIDGET) { Reconcile(); updates::Tick(h); }
+            if (wp == TIMER_WIDGET) {
+                Reconcile();
+                updates::Tick(h);
+                ClaudeUsage cu;
+                static int claudeTick = 0;
+                if (++claudeTick % 5 == 0 && claude_usage::Poll(cu)) UpdateWidget();  // every 5 s
+            }
             if (wp == TIMER_ALERT_ICON) {
                 KillTimer(h, TIMER_ALERT_ICON);
                 if (g_alertIconAdded) { TrayDelete(ALERT_ICON_ID); g_alertIconAdded = false; }

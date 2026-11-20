@@ -1,0 +1,16 @@
+{
+  "name": "claude-limit-sync",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Reads your claude.ai plan usage (5-hour and weekly) after you sign in, and writes it for the BatteryHub taskbar strip.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^39.0.0"
+  },
+  "allowScripts": {
+    "electron@39.8.10": true
+  }
+}
