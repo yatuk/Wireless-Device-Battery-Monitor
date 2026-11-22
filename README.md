@@ -35,7 +35,9 @@ npm install
 npx electron .
 ```
 
-- Açılan pencerede claude.ai'ye **kendin** giriş yap. Şifren ve çerezlerin uygulamanın kendi tarayıcı profilinde kalır, kod bunları okumaz.
+- Açılan pencerede claude.ai'ye **kendin** giriş yap. Şifren ve çerezlerin uygulamanın kendi tarayıcı profilinde kalır; dosyaya yazılmaz, kaydedilmez, başka yere gönderilmez.
+- İlk başarılı okumadan sonra oturum 30 gün kalıcı yapılır, böylece bilgisayar yeniden başlayınca tekrar giriş gerekmez.
+- Açılışta ağ henüz hazır değilse 15 saniyede bir yeniden dener. Durum satırları `%LOCALAPPDATA%\ClaudeLimitWidget\sync.log` dosyasına yazılır.
 - Uygulama dakikada bir *Ayarlar → Kullanım* sayfasındaki değerleri okur.
 - Tepsi menüsünde *Şimdi yenile* ve *Windows ile başlat* seçenekleri var.
 - claude.ai'nin belgelenmemiş iç adresini kullanıyor; claude.ai değişirse bozulabilir.
