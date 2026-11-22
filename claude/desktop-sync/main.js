@@ -1,7 +1,8 @@
 // Claude Limit Sync
 //
 // A tray-only helper. You sign in to claude.ai yourself in its own window (the password and cookies stay
-// inside this app's private browser profile; nothing here reads or stores them). Every minute it asks
+// inside this app's private browser profile; they are never written to a file, logged or sent anywhere
+// else; keepSignIn below only extends their lifetime inside that profile). Every minute it asks
 // claude.ai for the same plan-usage numbers its Settings > Usage page shows and writes them to
 // %LOCALAPPDATA%\ClaudeLimitWidget\usage.json, which BatteryHub shows on the taskbar.
 //
@@ -32,6 +33,10 @@ app.on('window-all-closed', (e) => e.preventDefault());  // stay in the tray
 
 function setStatus(s) {
   lastStatus = s;
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.appendFileSync(path.join(DATA_DIR, 'sync.log'), new Date().toISOString() + ' ' + s + '\n');
+  } catch (_) {}
   if (tray) {
     tray.setToolTip('Claude limit: ' + s);
     tray.setContextMenu(buildMenu());
@@ -86,6 +91,28 @@ function write(data) {
   fs.renameSync(tmp, DATA_FILE);
 }
 
+// claude.ai hands out its sign-in as session cookies, which Chromium drops when the app exits (a restart).
+// Keep them for 30 days in this app's own profile, like "remember me", so a reboot needs no new sign-in.
+// Values never leave the cookie store; only how many were kept is logged.
+async function keepSignIn() {
+  const ses = session.fromPartition(PARTITION);
+  const list = await ses.cookies.get({});
+  let n = 0;
+  for (const c of list) {
+    if (!c.session || !/(^|\.)claude\.ai$/.test(c.domain.replace(/^\./, ''))) continue;
+    const host = c.domain.replace(/^\./, '');
+    const d = {
+      url: 'https://' + host + (c.path || '/'), name: c.name, value: c.value, path: c.path, secure: c.secure,
+      httpOnly: c.httpOnly, expirationDate: Math.floor(Date.now() / 1000) + 30 * 86400,
+    };
+    if (!c.hostOnly) d.domain = c.domain;
+    if (c.sameSite && c.sameSite !== 'unspecified') d.sameSite = c.sameSite;
+    try { await ses.cookies.set(d); n++; } catch (_) {}
+  }
+  await ses.cookies.flushStore();
+  return n;
+}
+
 function ensureWorker() {
   if (worker && !worker.isDestroyed() && Date.now() - loadedAt < RELOAD_MS) return Promise.resolve();
   if (!worker || worker.isDestroyed()) {
@@ -113,6 +140,12 @@ async function poll(manual) {
   try {
     await ensureWorker();
     const url = worker.webContents.getURL();
+    if (!url) {  // page did not load (network not ready right after boot): try again shortly
+      setStatus('Bağlantı bekleniyor…');
+      loadedAt = 0;
+      setTimeout(() => poll(false), 15000);
+      return;
+    }
     if (!url.startsWith(BASE) || /\/login/.test(url)) {
       setStatus('Giriş gerekli');
       if (manual || !lastOk) openLogin();
@@ -123,6 +156,10 @@ async function poll(manual) {
       const d = parseUsage(r.usage);
       if (!d.seven_day && !d.five_hour) { setStatus('Yanıtta limit bulunamadı'); return; }
       write(d);
+      if (!lastOk) {
+        const kept = await keepSignIn().catch(() => -1);
+        setStatus('Oturum kalıcı yapıldı (' + kept + ' çerez)');
+      }
       lastOk = Date.now();
       const w = d.seven_day ? `haftalık %${Math.round(d.seven_day.used_percentage)}` : 'haftalık —';
       const f = d.five_hour ? ` · 5 saat %${Math.round(d.five_hour.used_percentage)}` : '';
@@ -158,6 +195,8 @@ function openLogin() {
   loginWin.webContents.on('did-navigate-in-page', check);
   loginWin.on('closed', () => { loginWin = null; });
 }
+
+app.on('before-quit', () => { session.fromPartition(PARTITION).cookies.flushStore().catch(() => {}); });
 
 app.whenReady().then(() => {
   app.setAppUserModelId('ClaudeLimitSync');
